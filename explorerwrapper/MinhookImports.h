@@ -181,7 +181,9 @@ VOID UpdateItemIcon(PVOID This, int a2)
 		if (hc) SetIconThumb(This, hc, a2, 3);
 	}
 	else
+	{
 		UpdateItem(This, a2);
+	}
 
 }
 
@@ -276,8 +278,9 @@ void UpdateTrayWindowDefinitions()
 	// Hook and update definitions of what windows should be added to the tray - largely for UWP purposes, but essentially zero-cost so included on both immersive on and off modes.
 	void* _ShouldAddWindowToTray = (void*)FindPattern((uintptr_t)GetModuleHandle(0), "48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC ?? 48 8B F9 33 DB");
 	void* _IsWindowNotDesktopOrTray = (void*)FindPattern((uintptr_t)GetModuleHandle(0), "48 89 5C 24 ?? 57 48 83 EC ?? 48 8B F9 33 DB FF 15 ?? ?? ?? ?? 3B C3 74 ?? 48 3B 3D");
-	MH_CreateHook(static_cast<LPVOID>(_ShouldAddWindowToTray), ShouldAddWindowToTray, reinterpret_cast<LPVOID*>(&_ShouldAddWindowToTray));
-	MH_CreateHook(static_cast<LPVOID>(_IsWindowNotDesktopOrTray), IsWindowNotDesktopOrTray, reinterpret_cast<LPVOID*>(&_IsWindowNotDesktopOrTray));
+
+	MH_CreateHook(_ShouldAddWindowToTray, ShouldAddWindowToTray, reinterpret_cast<LPVOID*>(&_ShouldAddWindowToTray));
+	MH_CreateHook(_IsWindowNotDesktopOrTray, IsWindowNotDesktopOrTray, reinterpret_cast<LPVOID*>(&_IsWindowNotDesktopOrTray));
 }
 
 void SetProgramListNscTreeAttributes()
@@ -297,7 +300,7 @@ void HandleThumbnailColorization()
 	if (g_osVersion.BuildNumber() >= 10074) // we don't apply to 8.1 as only pseudo-aero is supported there
 	{
 		void* _thumbnailrender = (void*)FindPattern((uintptr_t)GetModuleHandle(0), "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 20 44 89 40 18 57 41 54 41 55 41 56 41 57 48 81 EC 90 00 00 00 48 8B F9");
-		MH_CreateHook(static_cast<LPVOID>(_thumbnailrender), RenderThumbnail, reinterpret_cast<LPVOID*>(&renderThumbnail_orig));
+		MH_CreateHook(_thumbnailrender, RenderThumbnail, reinterpret_cast<LPVOID*>(&renderThumbnail_orig));
 	}
 }
 
@@ -309,8 +312,8 @@ void RenderStoreAppsOnTaskbar()
 		void* _cthumbnailUpdate = (void*)FindPattern((uintptr_t)GetModuleHandle(0), "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 48 8B 81 B0 00 00 00");
 		SetIconThumb = (setIconThumb_t)FindPattern((uintptr_t)GetModuleHandle(0), "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 49 63 D8 4C 8B 81 B0 00 00 00");
 
-		MH_CreateHook(static_cast<LPVOID>(_ctaskbandadd), SetWindowIcon, reinterpret_cast<LPVOID*>(&SetIcon));
-		MH_CreateHook(static_cast<LPVOID>(_cthumbnailUpdate), UpdateItemIcon, reinterpret_cast<LPVOID*>(&UpdateItem));
+		MH_CreateHook(_ctaskbandadd, SetWindowIcon, reinterpret_cast<LPVOID*>(&SetIcon));
+		MH_CreateHook(_cthumbnailUpdate, UpdateItemIcon, reinterpret_cast<LPVOID*>(&UpdateItem));
 	}
 }
 
@@ -336,23 +339,31 @@ void CreateImmersiveShell()
 		MH_CreateHook(static_cast<LPVOID>(SetWindowBandApiOrg), SetWindowBandNew, reinterpret_cast<LPVOID*>(&SetWindowBandApiOrg));
 		//MH_CreateHook(static_cast<LPVOID>(RegisterHotKeyApiOrg), RegisterWindowHotkeyNew, reinterpret_cast<LPVOID*>(&RegisterHotKeyApiOrg));
 
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2581), RetTrue, NULL); // GetWindowTrackInfoAsync
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2563), RetTrue, NULL); // ClearForeground
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2628), RetTrue, NULL); // CreateWindowGroup
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2629), RetTrue, NULL); // DeleteWindowGroup
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2631), RetTrue, NULL); // EnableWindowGroupPolicy
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2627), RetTrue, NULL); // SetBridgeWindowChild
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2511), RetTrue, NULL); // SetFallbackForeground
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2566), RetTrue, NULL); // SetWindowArrangement
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2632), RetTrue, NULL); // SetWindowGroup
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2579), RetTrue, NULL); // SetWindowShowState
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2585), RetTrue, NULL); // UpdateWindowTrackingInfo
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2514), RetTrue, NULL); // RegisterEdgy
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2542), RetTrue, NULL); // RegisterShellPTPListener
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2537), RetTrue, NULL); // SendEventMessage
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2513), RetTrue, NULL); // SetActiveProcessForMonitor
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2564), RetTrue, NULL); // RegisterWindowArrangementCallout
-		MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)2567), RetTrue, NULL); // EnableShellWindowManagementBehavior
+
+		int iImportsToPatch[] = { 
+			2511, // SetFallbackForeground
+			2513, // SetActiveProcessForMonitor
+			2514, // RegisterEdgy
+			2537, // SendEventMessage
+			2542, // RegisterShellPTPListener
+			2563, // ClearForeground
+			2564, // RegisterWindowArrangementCallout
+			2566, // SetWindowArrangement
+			2567, // EnableShellWindowManagementBehavior
+			2579, // SetWindowShowState
+			2581, // GetWindowTrackInfoAsync
+			2585, // UpdateWindowTrackingInfo
+			2627, // SetBridgeWindowChild
+			2628, // CreateWindowGroup
+			2629, // DeleteWindowGroup
+			2631, // EnableWindowGroupPolicy
+			2632, // SetWindowGroup
+		};
+
+		for (int i = 0; i < ARRAYSIZE(iImportsToPatch); ++i)
+		{
+			MH_CreateHook(GetProcAddress(GetModuleHandle(L"user32.dll"), (LPCSTR)iImportsToPatch[i]), RetTrue, NULL);
+		}
 	}
 }
 

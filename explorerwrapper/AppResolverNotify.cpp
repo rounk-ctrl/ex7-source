@@ -1,3 +1,4 @@
+#include "common.h"
 #include "AppResolverNotify.h"
 #include "dbgprint.h"
 
@@ -39,7 +40,7 @@ HRESULT STDMETHODCALLTYPE CAppResolverNotify8::OnChangeNotify(long p1,PVOID* p2,
 	return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE CAppResolverNotify8::AddHotkey(unsigned int p1, PVOID* p2, PVOID* p3, int p4)
+HRESULT STDMETHODCALLTYPE CAppResolverNotify8::AddHotkey(UINT p1, PVOID* p2, PVOID* p3, int p4)
 {
 	dbgprintf(L"CAppResolverNotify8::AddHotkey %p %p %p %p",p1,p2,p3,p4);
 	return E_NOTIMPL;

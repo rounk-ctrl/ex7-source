@@ -44,6 +44,7 @@ public:
 	STDMETHODIMP_(void) Sort();
 	STDMETHODIMP_(void) RemoveDuplicates();
 	STDMETHODIMP_(void) SetLimit(long limit);
+
 private:
 	long m_cRef;
 	long m_count;

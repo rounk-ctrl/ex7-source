@@ -10,6 +10,8 @@
 #include "TypeDefinitions.h"
 #include "ThemeManager.h"
 
+#define GetAValue(rgb) (LOBYTE((rgb)>>24))
+
 // Ittr: Code that doesn't relate to specific hooks resides here
 // e.g. helper functions, HWND retrieval functions, error messages, non-descript registry changes
 
@@ -81,29 +83,24 @@ static HWND GetThumbnailWnd()
 int g_fDPIAware = 0;
 int g_nScreenDpi = 0;
 int g_fForcedDpi = 0;
-__int64 GetScreenDpi(void)
+UINT GetScreenDpi()
 {
-	int v0; // eax
-	HDC DC; // rax
-	HDC v3; // rbx
-
 	if (!g_fForcedDpi)
 	{
-		v0 = IsProcessDPIAware();
-		if (g_fDPIAware != v0 || !g_nScreenDpi)
+		if (g_fDPIAware != IsProcessDPIAware() || !g_nScreenDpi)
 		{
-			g_fDPIAware = v0;
+			g_fDPIAware = IsProcessDPIAware();
 			g_nScreenDpi = 96;
-			DC = GetDC(0LL);
-			v3 = DC;
-			if (DC)
+
+			HDC hDC = GetDC(NULL);
+			if (hDC)
 			{
-				g_nScreenDpi = GetDeviceCaps(DC, 88);
-				ReleaseDC(0LL, v3);
+				g_nScreenDpi = GetDeviceCaps(hDC, 88);
+				ReleaseDC(NULL, hDC);
 			}
 		}
 	}
-	return (unsigned int)g_nScreenDpi;
+	return g_nScreenDpi;
 }
 
 // this setup is created so that SetWindowTheme can apply Windows 8-era classes without causing crashing
@@ -141,16 +138,15 @@ void EnsureWindowColorization()
 
 DWORD GetColorizationColor()
 {
-	DWMCOLORIZATIONPARAMS colors;
-	CHAR buffer[0x28];
-	memset(buffer, 0, 0x28);
-	DwmGetColorizationParametersOrig(&buffer);
-	memcpy(&colors, (PVOID)buffer, sizeof(DWMCOLORIZATIONPARAMS));
+	// has color in BGR format ??
+	DWMCOLORIZATIONPARAMS colors = { };
+	DwmGetColorizationParametersOrig(&colors);
 
-	int a = (colors.ColorizationColor >> 24) & 0xFF;
-	int r = (colors.ColorizationColor >> 16) & 0xFF;
-	int g = (colors.ColorizationColor >> 8) & 0xFF;
-	int b = (colors.ColorizationColor) & 0xFF;
+	BYTE a = GetAValue(colors.ColorizationColor);
+	BYTE r = GetRValue(colors.ColorizationColor);
+	BYTE g = GetGValue(colors.ColorizationColor);
+	BYTE b = GetBValue(colors.ColorizationColor);
+
 
 	// thanks to microsoft we have to account for automatic colorization being bugged on 10+ as alpha is set to 0. Yay...
 	if (g_osVersion.BuildNumber() >= 10074 && s_ColorizationOptions != 3 && a == 0x00 && (r != 0x00 || g != 0x00 || b != 0x00)) // only apply if it appears that the user is trying to set an actual colour - full transparency remains possible!
@@ -200,19 +196,25 @@ DWORD GetColorizationColor()
 			break;
 	}
 
-	DWORD color = (s_ColorizationOptions != 3 || s_AcrylicAlt == 3) ? ((a << 24) | (b << 16) | (g << 8) | r) : ((s_OverrideAlpha ? ((s_AlphaValue & 0xFF) << 24) : 0xCC000000) | (CImmersiveColor::GetColor(imclr) & 0xFFFFFF));
+	DWORD color = (s_ColorizationOptions != 3 || s_AcrylicAlt == 3) ? ((a << 24) | (r << 16) | (g << 8) | b) : ((s_OverrideAlpha ? ((s_AlphaValue & 0xFF) << 24) : 0xCC000000) | (CImmersiveColor::GetColor(imclr) & 0xFFFFFF));
 	return color;
 }
 
 ACCENT_STATE GetAccentState(bool isThumbnail)
 {
 	if (s_ColorizationOptions == 3) // acrylic (1803-)
+	{
 		return ACCENT_ENABLE_ACRYLICBLURBEHIND;
+	}
 	else if (s_ColorizationOptions == 2) // blurbehind (1507 until 11 21h2)
+	{
 		return ACCENT_ENABLE_BLURBEHIND;
+	}
 
 	if (isThumbnail) // run this block after the other ones, to ensure that pseudo-aero mode uses opaque thumbnail. using the option definition causes extreme visual bugs for some reason.
+	{
 		return ACCENT_ENABLE_GRADIENT;
+	}
 
 	// pseudo-aero & solid-color (all versions) - the replacements for option 0 & fallback for other values entered > 4
 	return ACCENT_ENABLE_TRANSPARENTGRADIENT; // we use transparentgradient for both 1 and 4, as gradient has some weird hrgn side-effects on start menu
@@ -262,7 +264,7 @@ __forceinline WINDOWCOMPOSITIONATTRIBDATA GetTrayAccentProperties(bool isThumbna
 // Ittr: Less lines of code and more utility/reusability for setting composition attributes in future
 void ForceActiveWindowAppearance(HWND hwnd)
 {
-	BOOL bForceActiveWindowAppearance = true;
+	BOOL bForceActiveWindowAppearance = TRUE;
 	WINDOWCOMPOSITIONATTRIBDATA attrData;
 	attrData.Attrib = WCA_FORCE_ACTIVEWINDOW_APPEARANCE;
 	attrData.pvData = &bForceActiveWindowAppearance;
@@ -320,7 +322,7 @@ BOOL IsShellManagedWindow(HWND hwnd)
 bool ShouldExcludeFromTaskbar(HWND hwnd)
 {
 	wchar_t text[256];
-	GetWindowTextW(hwnd, text, 255);
+	GetWindowTextW(hwnd, text, ARRAYSIZE(text));
 
 	if (!StrCmpW(text, L"Microsoft Text Input Application") || !StrCmpW(text, L"Windows Shell Experience Host") || !StrCmpW(text, L"Start") || !StrCmpW(text, L"Search"))
 		return true;
@@ -409,7 +411,6 @@ void CrashError()
 void CreateShellFolder()
 {
 	//addendum: using the regular HKLM location is not viable for non-administrator users so we store in HKCU, which causes it to turn up in HKEY_USERS somewhere. 
-	//this shouldn't work, but it does :P
 	if (g_osVersion.BuildNumber() >= 14393) // Ittr: byebye shellfolder.reg
 	{
 		DWORD value = 0; // initialise in memory
@@ -419,9 +420,9 @@ void CreateShellFolder()
 		if (value != attrVal) // basically if the attribute value doesn't exist or is the wrong value...
 		{
 			// we create all the relevant values. issue solved for new users - program list works out of the box now
-			RegSetSZ(HKEY_CURRENT_USER, sz_ShellFolder, NULL, (DWORD*)L"Programs Folder and Fast Items"); // create clsid name
-			RegSetExpandSZ(HKEY_CURRENT_USER, sz_ShellFolder2, NULL, (DWORD*)L"%SystemRoot%\\system32\\shell32.dll"); // point it to shell32
-			RegSetSZ(HKEY_CURRENT_USER, sz_ShellFolder2, L"ThreadingModel", (DWORD*)L"Apartment"); // regular threading model criteria...
+			RegSetSZ(HKEY_CURRENT_USER, sz_ShellFolder, NULL, L"Programs Folder and Fast Items"); // create clsid name
+			RegSetExpandSZ(HKEY_CURRENT_USER, sz_ShellFolder2, NULL, L"%SystemRoot%\\system32\\shell32.dll"); // point it to shell32
+			RegSetSZ(HKEY_CURRENT_USER, sz_ShellFolder2, L"ThreadingModel", L"Apartment"); // regular threading model criteria...
 			RegSetDWORD(HKEY_CURRENT_USER, sz_ShellFolder3, L"Attributes", &attrVal); // apply folder attributes, arguably the most important part
 		}
 	}
@@ -475,36 +476,36 @@ HWND WINAPI CreateWindowInBandNew(DWORD dwExStyle,
 {
 	if (s_EnableImmersiveShellStack == 1) // immersive enabled
 	{
-		DWORD p0 = (DWORD)_ReturnAddress();
-		dwExStyle = dwExStyle | WS_EX_TOOLWINDOW; // TODO is this needed?
-		HWND ret = CreateWindowExW(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hwndParent, hMenu, hInstance, lpParam);
-
-		// We do this to eliminate the ghost window
-		BOOL shouldCloak = true;
-		WCHAR titleBuffer[MAX_PATH];
-		GetClassName(ret, titleBuffer, sizeof(titleBuffer));
-		WCHAR afwTitle[23] = L"ApplicationFrameWindow";
-		if (strcmp((char*)titleBuffer, (char*)afwTitle) == 0)
-			DwmSetWindowAttribute(ret, DWMWA_CLOAK, &shouldCloak, sizeof(shouldCloak));
-
 		dbgprintf(L"CREATEWINDOWINBANDNEW %i", dwBand);
 
-		if (ret)
+		dwExStyle |= WS_EX_TOOLWINDOW; // TODO is this needed?
+		HWND hwndRet = CreateWindowExW(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hwndParent, hMenu, hInstance, lpParam);
+		if (!hwndRet) return NULL;
+
+		// We do this to eliminate the ghost window
+		BOOL shouldCloak = TRUE;
+		WCHAR titleBuffer[MAX_PATH];
+		GetClassName(hwndRet, titleBuffer, ARRAYSIZE(titleBuffer));
+		if (lstrcmp(titleBuffer, L"ApplicationFrameWindow") == 0)
 		{
-			SetProp(ret, L"UIA_WindowVisibilityOverriden", (HANDLE)2);
-			SetProp(ret, L"explorer7.WindowBand", (HANDLE)dwBand);
+			DwmSetWindowAttribute(hwndRet, DWMWA_CLOAK, &shouldCloak, sizeof(shouldCloak));
 		}
+
+		SetProp(hwndRet, L"UIA_WindowVisibilityOverriden", (HANDLE)2);
+		SetProp(hwndRet, L"explorer7.WindowBand", (HANDLE)dwBand);
 		
-		return ret;
+		return hwndRet;
 	}
 	else // Preserve legacy codepath for Windows 8.1 and non-immersive users
 	{
+		dwStyle |= WS_EX_TOOLWINDOW;
+		HWND hwndRet = CreateWindowInBandOrig(dwExStyle, (LPWSTR)lpClassName, (PVOID)lpWindowName, (PVOID)dwStyle, (PVOID)x, (PVOID)y, (PVOID)nWidth, (PVOID)nHeight, hwndParent, hMenu, hInstance, lpParam, dwBand & 1);
+
 		DWORD p0 = (DWORD)_ReturnAddress();
-		dwStyle = dwStyle | WS_EX_TOOLWINDOW;
-		HWND ret = CreateWindowInBandOrig(dwExStyle, (LPWSTR)lpClassName, (PVOID)lpWindowName, (PVOID)dwStyle, (PVOID)x, (PVOID)y, (PVOID)nWidth, (PVOID)nHeight, hwndParent, hMenu, hInstance, lpParam, dwBand & 1);
-		dbgprintf(L"%p: CreateWindowInBand %p %s %p %p %p %p %p %p %p %p %p %p %p = %p %p", p0, dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hwndParent, hMenu, hInstance, lpParam, dwBand, ret, GetLastError());
-		SetProp(ret, L"explorer7.WindowBand", (HANDLE)dwBand);
-		return ret;
+		dbgprintf(L"%p: CreateWindowInBand %p %s %p %p %p %p %p %p %p %p %p %p %p = %p %p", p0, dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hwndParent, hMenu, hInstance, lpParam, dwBand, hwndRet, GetLastError());
+
+		SetProp(hwndRet, L"explorer7.WindowBand", (HANDLE)dwBand);
+		return hwndRet;
 	}
 }
 
@@ -512,22 +513,23 @@ HWND WINAPI CreateWindowInBandExNew(DWORD exStyle, LPWSTR szClassName, PVOID p3,
 {
 	DWORD p0 = (DWORD)_ReturnAddress();
 	exStyle = exStyle | WS_EX_TOOLWINDOW;
-	HWND ret = CreateWindowInBandExOrig(exStyle, szClassName, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13 & 1, dwTypeFlags);
+	HWND hwndRet = CreateWindowInBandExOrig(exStyle, szClassName, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13 & 1, dwTypeFlags);
 
 	// We do this to eliminate the ghost window
-	BOOL shouldCloak = true;
+	BOOL shouldCloak = TRUE;
 	WCHAR titleBuffer[MAX_PATH];
-	GetClassName(ret, titleBuffer, sizeof(titleBuffer));
-	WCHAR afwTitle[23] = L"ApplicationFrameWindow";
-	if (strcmp((char*)titleBuffer, (char*)afwTitle) == 0)
-		DwmSetWindowAttribute(ret, DWMWA_CLOAK, &shouldCloak, sizeof(shouldCloak));
+	GetClassName(hwndRet, titleBuffer, ARRAYSIZE(titleBuffer));
+	if (lstrcmp(titleBuffer, L"ApplicationFrameWindow") == 0)
+	{
+		DwmSetWindowAttribute(hwndRet, DWMWA_CLOAK, &shouldCloak, sizeof(shouldCloak));
+	}
 
-	dbgprintf(L"%p: CreateWindowInBandEx %p %s %p %p %p %p %p %p %p %p %p %p %p = %p %p", p0, exStyle, szClassName, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, ret, GetLastError());
+	dbgprintf(L"%p: CreateWindowInBandEx %p %s %p %p %p %p %p %p %p %p %p %p %p = %p %p", p0, exStyle, szClassName, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, hwndRet, GetLastError());
 	dbgprintf(L"CreateWindowInBandExOrig %i", p13);
 
-	SetProp(ret, L"UIA_WindowVisibilityOverriden", (HANDLE)2);
-	SetProp(ret, L"explorer7.WindowBand", (HANDLE)p13);
-	return ret;
+	SetProp(hwndRet, L"UIA_WindowVisibilityOverriden", (HANDLE)2);
+	SetProp(hwndRet, L"explorer7.WindowBand", (HANDLE)p13);
+	return hwndRet;
 }
 
 BOOL WINAPI SetWindowBandNew(HWND hwnd, HWND hwndInsertAfter, DWORD flags)

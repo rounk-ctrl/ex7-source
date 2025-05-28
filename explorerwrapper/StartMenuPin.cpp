@@ -1,5 +1,6 @@
 #pragma warning(disable:4244) // type conversion used for getting help text
 
+#include "common.h"
 #include "StartMenuPin.h"
 #include "dbgprint.h"
 #include "OSVersion.h"
@@ -122,7 +123,7 @@ LRESULT CStartMenuPin::GetMenuStringID(UINT* w)
 	return S_OK;
 }
 
-int CStartMenuPin::GetHelpText(unsigned __int64 id, LPWSTR buf, UINT nCharMax)
+int CStartMenuPin::GetHelpText(unsigned int id, LPWSTR buf, UINT nCharMax)
 {
 	return Shell32_LoadString(h_shell32, id + 0x1508ul, buf, nCharMax);
 }

@@ -182,9 +182,7 @@ HRESULT WINAPI SetWindowThemeNEW(HWND hwnd, LPCWSTR pszSubAppName, LPCWSTR pszSu
 // Disable composition where appropriate
 HRESULT WINAPI DwmIsCompositionEnabledNEW(BOOL* pfEnabled)
 {
-	if (s_DisableComposition) { return 0x80263001; } //0x80263001 is the value to signify composition being disabled for some reason
-
-	return DwmIsCompositionEnabled(pfEnabled);
+	return s_DisableComposition ? DWM_E_COMPOSITIONDISABLED : DwmIsCompositionEnabled(pfEnabled);
 }
 
 // Disable legacy DwmEnableBlurBehindWindow when new methods are in use
@@ -222,12 +220,11 @@ __int64 DwmpActivateLivePreviewNEW(int a1, __int64 a2, __int64 a3, int a4, void*
 // Adjust colorization parameters
 DWORD WINAPI DwmGetColorizationParametersNEW(PDWMCOLORIZATIONPARAMS colors)
 {
-	CHAR buffer[0x28];
-	memset(buffer, 0, 0x28);
+	memset(colors, 0, sizeof(DWMCOLORIZATIONPARAMS));
+	DWORD ret = DwmGetColorizationParametersOrig(colors);
+
 	dbgprintf(L"DwmGetColorizationParameters\nColorizationColor %p\nColorizationAfterglow %p\nColorizationColorBalance %p\nColorizationAfterglowBalance %p\nColorizationBlurBalance %p\nColorizationGlassReflectionIntensity %p\nColorizationOpaqueBlend %p",
 		colors->ColorizationColor, colors->ColorizationAfterglow, colors->ColorizationColorBalance, colors->ColorizationAfterglowBalance, colors->ColorizationBlurBalance, colors->ColorizationGlassReflectionIntensity, colors->ColorizationOpaqueBlend);
-	DWORD ret = DwmGetColorizationParametersOrig(&buffer);
-	memcpy(colors, (PVOID)buffer, sizeof(DWMCOLORIZATIONPARAMS));
 	return ret;
 }
 
